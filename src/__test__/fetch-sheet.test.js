@@ -1,4 +1,4 @@
-const { cleanRows } = require("../fetch-sheet.js");
+const { cleanRows, guessColumnsDataTypes } = require("../fetch-sheet.js");
 
 describe("cleaning rows from GSheets response", () => {
   it("removes keys that don't correspond to column names", () => {
@@ -36,4 +36,80 @@ describe("cleaning rows from GSheets response", () => {
     const cleaned = cleanRows([numRow])[0];
     expect(Object.values(cleaned)).toEqual([1, 123456789, 0.5912, 123456.789]);
   });
+
+  it('parses cells as numbers when all column cells contains numbers only', function () {
+    const rows = [
+      { column: "5" },
+      { column: "2" }
+    ];
+    const cleaned = cleanRows(rows);
+    expect(cleaned[0].column).toBe(5);
+    expect(cleaned[1].column).toBe(2);
+  });
+
+  it('parses all cells in column as strings when data types are mixed in given column', function () {
+    const rows = [
+      { column: "5"},
+      { column: "hello" }
+    ];
+    const cleaned = cleanRows(rows);
+    console.log(cleaned)
+    expect(cleaned[0].column).toBe("5");
+    expect(cleaned[1].column).toBe("hello");
+  });
+
+  it('guesses column types', function () {
+    const rows = [
+      { number: "1", string: "something", null: null, boolean: "TRUE" },
+      { number: "2", string: "anything", null: null, boolean: "FALSE" },
+      { number: "3", string: "nothing", null: null, boolean: null }
+    ];
+    const cleaned = cleanRows(rows);
+    console.log(cleaned)
+    expect(cleaned.map(row => row.number)).toEqual([1,2,3]);
+    expect(cleaned.map(row => row.string)).toEqual(["something", "anything", "nothing"]);
+    expect(cleaned.map(row => row.null)).toEqual([null, null, null]);
+    expect(cleaned.map(row => row.boolean)).toEqual([true, false, null]);
+  });
+});
+
+describe("guessing column data type based on all cells in column", () => {
+  it('recognizes type for all same cells', function () {
+    const rows = [
+      { numbers: "1,", strings: "something", nulls: null, booleans: "TRUE" },
+      { numbers: "2", strings: "anything", nulls: null, booleans: "FALSE" },
+      { numbers: "3,", strings: "nothing", nulls: null, booleans: "TRUE" }
+    ];
+    const guessedTypes = guessColumnsDataTypes(rows);
+    expect(guessedTypes.numbers).toBe('number');
+    expect(guessedTypes.strings).toBe('string');
+    expect(guessedTypes.nulls).toBeUndefined();
+    expect(guessedTypes.booleans).toBe('boolean');
+  });
+  
+  it('ignores null', function () {
+    const rows = [
+      { numbers: "1,", strings: "something", nulls: null, booleans: null },
+      { numbers: null, strings: "anything", nulls: null, booleans: "FALSE" },
+      { numbers: "3,", strings: null, nulls: null, booleans: "TRUE" }
+    ];
+    const guessedTypes = guessColumnsDataTypes(rows);
+    expect(guessedTypes.numbers).toBe('number');
+    expect(guessedTypes.strings).toBe('string');
+    expect(guessedTypes.nulls).toBeUndefined();
+    expect(guessedTypes.booleans).toBe('boolean');
+  });
+
+  it('fallbacks to string when types are different', function () {
+    const rows = [
+      { numbers: "1,", strings: "something", nulls: null, booleans: "TRUE" },
+      { numbers: "2", strings: "anything", nulls: null, booleans: "FALSE" },
+      { numbers: "3/5,", strings: "nothing", nulls: null, booleans: "TRUE" }
+    ];
+    const guessedTypes = guessColumnsDataTypes(rows);
+    expect(guessedTypes.numbers).toBe('string');
+    expect(guessedTypes.strings).toBe('string');
+    expect(guessedTypes.nulls).toBeUndefined();
+    expect(guessedTypes.booleans).toBe('boolean');
+  });  
 });
